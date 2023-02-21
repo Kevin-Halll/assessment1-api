@@ -9,9 +9,9 @@ class JSONResponse {
  
     static error(res, message = "error", error, status) {
        res.status(status ?? res.statusCode).json({
+          status: status ?? res.statusCode,
           message,
           error,
-          status: status ?? res.statusCode,
        });
     }
  }
