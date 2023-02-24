@@ -1,29 +1,8 @@
 const { validateUser } = require("../services/user.validation");
 const { JSONResponse } = require("../utilities/JSONResponse");
 const User = require("../models/user.model");
+const bcrypt = require('bcrypt');
 
-/**
- * ### Description
- * Creating a user
- */
-// exports.createUser = async (req, res) => {
-//   try {
-//     const email = await User.findOne({ email: req.body.email });
-//     if (email) {
-//       JSONResponse.error(res, "This email already exist", undefined, 409);
-//     } else{
-//       const {error, value} = validateUser(req.body);
-// 	  if(error){
-// 		console.log(error)
-// 		JSONResponse.error(res, "Failure creating user.", error, 500);
-// 	  }
-//       const user = await User.create(req.body);
-//       JSONResponse.success(res, "Success.", user, 200);
-//     }
-//   } catch (error) {
-//     JSONResponse.error(res, "Failure handling user model.", error, 500);
-//   }
-// };
 
 exports.createUser = async (req, res) => {
   try {
@@ -37,6 +16,9 @@ exports.createUser = async (req, res) => {
         409
       );
     }
+	if(req.body.password){
+		req.body.password = await bcrypt.hash(req.body.password, 12)
+	}
 
     const { error, value } = validateUser(req.body);
     if (error) {
@@ -48,24 +30,13 @@ exports.createUser = async (req, res) => {
     }
 
     const user = await User.create(req.body);
+	user.password = undefined;
     return JSONResponse.success(res, "Success.", user, 200);
   } catch (err) {
     return JSONResponse.error(res, "Failure handling user model.", err, 500);
   }
 };
 
-/**
- * ### Description
- * Retrieving all users
- */
-// exports.getAllUsers = async (req, res) => {
-// 	try {
-// 		const user = await User.aggregate([{$match:{}}])
-// 		JSONResponse.success(res, 'Success.', user, 200)
-// 	} catch (error) {
-// 		JSONResponse.error(res, "Failure handling user model.", error, 500)
-// 	}
-// }
 
 exports.getAllUsers = async (req, res) => {
   try {
@@ -86,20 +57,15 @@ exports.getAllUsers = async (req, res) => {
       }
       // boolean cannot do regex operations, hence the need to format is differently
       if (searchQuery[search] == "true" || searchQuery[search] == "false") {
-        searchResult.push({ [search]: searchQuery[search] });
+        searchResult.push({ [search]: JSON.parse(searchQuery[search]) });
         delete searchQuery[search];
       }
     });
 
+	// pagination
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 6;
     const startIndex = (page - 1) * limit;
-
-    const pipeline = [
-      // your aggregation stages here
-      {$skip: startIndex},
-      {$limit: limit},
-    ];
 
     // format the query for partial search in the database
     Object.keys(searchQuery).forEach((search) => {
@@ -107,7 +73,8 @@ exports.getAllUsers = async (req, res) => {
         [search]: { $regex: searchQuery[search], $options: "i" },
       });
     });
-
+    console.log(searchResult)
+	// sorting by order
     const sortField = req.query.sortField || "_id";
     const sortOrder = req.query.sortOrder || "des";
     const sortObj = {};
@@ -116,16 +83,19 @@ exports.getAllUsers = async (req, res) => {
     const users = await User.aggregate(
 		searchResult.length ?
 		[
-			searchResult.map((result) => {
+			...searchResult.map((result) => {
 				return {$match: result};
-			})
+			}),
+			{$sort : sortObj},
+			{$skip : startIndex},
+			{$limit : limit},
 		]
 		:
 		[
 			{$match : {}},
+			{$sort : sortObj},
 			{$skip : startIndex},
 			{$limit : limit},
-			{$sort : sortObj},
 		]
     );
 
